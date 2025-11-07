@@ -1,0 +1,64 @@
+name: Sheets CI (OIDC)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test-mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: google-sheets-mcp@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_default_credentials: true
+          scopes: |
+            https://www.googleapis.com/auth/spreadsheets
+            https://www.googleapis.com/auth/drive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Google API client
+        run: pip install --quiet google-api-python-client google-auth google-auth-httplib2
+
+      - name: List a few Drive files
+        env:
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: |
+          python - << 'PY'
+          from googleapiclient.discovery import build
+          from googleapiclient.errors import HttpError
+
+          folder_id = "${{ secrets.DRIVE_FOLDER_ID }}"
+          try:
+              service = build("drive", "v3")
+              query = f"'{folder_id}' in parents and trashed = false"
+              response = service.files().list(
+                  q=query,
+                  fields="files(id,name,mimeType)",
+                  pageSize=5
+              ).execute()
+              files = response.get("files", [])
+              print("Top 5 files in folder:")
+              for file in files:
+                  print(f"- {file['name']} ({file['id']}) [{file['mimeType']}]")
+              if not files:
+                  print("Folder is empty (auth still succeeded).")
+          except HttpError as exc:
+              print("Drive API error:", exc)
+              raise
+          PY
