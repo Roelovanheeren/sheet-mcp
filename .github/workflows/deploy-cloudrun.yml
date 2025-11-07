@@ -1,0 +1,58 @@
+name: Deploy Sheets MCP to Cloud Run
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      PROJECT_ID: savvy-depot-472312-k6
+      REGION: us-central1
+      REPO_NAME: sheets-mcp
+      SERVICE_NAME: sheets-mcp
+      SA_EMAIL: google-sheets-mcp@savvy-depot-472312-k6.iam.gserviceaccount.com
+      DRIVE_FOLDER_ID: 1Wm3RE4MEWWL4kPFhljQgARPQdxT7l0xx
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Auth to Google with OIDC
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: projects/932138610546/locations/global/workloadIdentityPools/gh-pool/providers/github
+        service_account: ${{ env.SA_EMAIL }}
+
+    - name: Set up gcloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Configure Artifact Registry docker auth
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+    - name: Build and push image
+      run: |
+        IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/server:$(git rev-parse --short HEAD)"
+        gcloud artifacts repositories describe "${{ env.REPO_NAME }}" --location="${{ env.REGION }}" || \
+          gcloud artifacts repositories create "${{ env.REPO_NAME }}" --repository-format=DOCKER --location="${{ env.REGION }}"
+        docker build -t "${IMAGE}" .
+        docker push "${IMAGE}"
+        echo "IMAGE=${IMAGE}" >> $GITHUB_ENV
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy "${{ env.SERVICE_NAME }}" \
+          --image "${IMAGE}" \
+          --region "${{ env.REGION }}" \
+          --platform managed \
+          --port 8080 \
+          --allow-unauthenticated \
+          --service-account "${{ env.SA_EMAIL }}" \
+          --set-env-vars DRIVE_FOLDER_ID="${{ env.DRIVE_FOLDER_ID }}"
