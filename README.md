@@ -319,26 +319,20 @@ Tools included:
 | `create_spreadsheet` | Creates a sheet and moves it into the shared folder   |
 | `append_rows`     | Appends rows to a range with `USER_ENTERED` semantics    |
 
-### Railway Auto-Deploy
+### Railway Deploy (V1)
 
-The workflow `.github/workflows/railway-deploy.yml` deploys the Node server via the Railway CLI on every push to `main` (or manual `workflow_dispatch`). Before enabling it:
+Use the provided Dockerfile + `.env.example` for a clean Railway deployment:
 
-1.  In Railway, create a project + service pointing at this repo. Configure environment variables inside Railway for:
-    * `GCP_SERVICE_ACCOUNT_EMAIL`
-    * `GCP_PROJECT_ID`
-    * `DRIVE_FOLDER_ID`
-    * `GOOGLE_APPLICATION_CREDENTIALS` **or** mount ADC credentials / service-account binding.
-2.  Generate a permanent [Railway token](https://docs.railway.app/deploy/deployment-token) and copy the project + service IDs.
-3.  In GitHub → Settings → Secrets and variables → Actions → **Secrets**, add:
-    * `RAILWAY_TOKEN`
-    * `RAILWAY_PROJECT_ID`
-    * `RAILWAY_SERVICE_ID`
-4.  Push to `main` (or run the workflow manually). The job does:
-    * `npm ci`
-    * Installs the Railway CLI
-    * `railway up --project $RAILWAY_PROJECT_ID --service $RAILWAY_SERVICE_ID --ci`
+1. **Share the Drive folder** with the service account that Railway will use (e.g., `google-sheets-mcp@savvy-depot-472312-k6.iam.gserviceaccount.com`). Give it Editor access so it can list/create files in that folder.
+2. **Create a service account JSON key** for the same identity and upload it in Railway → Variables → “Add File”. Mount it as `/opt/sa.json`.
+3. **Set Railway variables** (can also be stored in a `.env` when running locally):
+   - `DRIVE_FOLDER_ID=1Wm3RE4MEWWL4kPFhljQgARPQdxT7l0xx`
+   - `PORT=8080`
+   - `LOG_LEVEL=info`
+   - `GOOGLE_APPLICATION_CREDENTIALS=/opt/sa.json`
+4. Deploy. Railway will build the Dockerfile, respect the platform `PORT`, and start the SSE endpoint at `https://<service>.up.railway.app/sse`.
 
-Once the workflow succeeds, grab the Railway-generated URL (e.g., `https://google-sheets-mcp-production.up.railway.app/sse`) and register it inside AgentKit / Claude / Cursor.
+> Tip: the `.env.example` in this repo lists the required variables. Copy it to `.env` if you want to run the container outside Railway.
 
 ---
 
