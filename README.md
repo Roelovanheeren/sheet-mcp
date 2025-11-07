@@ -293,6 +293,53 @@ If you want to modify the code:
     # uv run start
     ```
 
+
+## 🟦 Node MCP Server (Express + MCP SDK)
+
+Prefer a lightweight JavaScript stack? The repo now ships with a Node/Express MCP server (`server.js`) powered by `@modelcontextprotocol/sdk`.
+
+### Local Setup
+
+1.  Install deps once: `npm install`
+2.  Set the following environment variables (locally or in your MCP client config):
+    * `GCP_SERVICE_ACCOUNT_EMAIL`
+    * `GCP_PROJECT_ID`
+    * `DRIVE_FOLDER_ID`
+    * Optional but recommended: `GOOGLE_APPLICATION_CREDENTIALS` pointing at a service-account JSON file for local runs. In hosted environments (Railway, Cloud Run, etc.) ADC will automatically use the attached service account.
+3.  Start the server: `npm start`
+4.  Endpoints:
+    * Streamable HTTP: `POST /mcp`
+    * Legacy SSE (Claude Desktop / Cursor compatibility): `GET /sse` and `POST /messages?sessionId=...`
+
+Tools included:
+
+| Tool              | Description                                              |
+| ----------------- | -------------------------------------------------------- |
+| `list_spreadsheets` | Lists spreadsheets in `DRIVE_FOLDER_ID`                 |
+| `create_spreadsheet` | Creates a sheet and moves it into the shared folder   |
+| `append_rows`     | Appends rows to a range with `USER_ENTERED` semantics    |
+
+### Railway Auto-Deploy
+
+The workflow `.github/workflows/railway-deploy.yml` deploys the Node server via the Railway CLI on every push to `main` (or manual `workflow_dispatch`). Before enabling it:
+
+1.  In Railway, create a project + service pointing at this repo. Configure environment variables inside Railway for:
+    * `GCP_SERVICE_ACCOUNT_EMAIL`
+    * `GCP_PROJECT_ID`
+    * `DRIVE_FOLDER_ID`
+    * `GOOGLE_APPLICATION_CREDENTIALS` **or** mount ADC credentials / service-account binding.
+2.  Generate a permanent [Railway token](https://docs.railway.app/deploy/deployment-token) and copy the project + service IDs.
+3.  In GitHub → Settings → Secrets and variables → Actions → **Secrets**, add:
+    * `RAILWAY_TOKEN`
+    * `RAILWAY_PROJECT_ID`
+    * `RAILWAY_SERVICE_ID`
+4.  Push to `main` (or run the workflow manually). The job does:
+    * `npm ci`
+    * Installs the Railway CLI
+    * `railway up --project $RAILWAY_PROJECT_ID --service $RAILWAY_SERVICE_ID --ci`
+
+Once the workflow succeeds, grab the Railway-generated URL (e.g., `https://google-sheets-mcp-production.up.railway.app/sse`) and register it inside AgentKit / Claude / Cursor.
+
 ---
 
 ## 🚢 Deploying to Google Cloud Run (Keyless with Workload Identity Federation)

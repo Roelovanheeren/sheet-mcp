@@ -1,0 +1,41 @@
+name: Deploy Node MCP to Railway
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+            node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy via Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ] || [ -z "$RAILWAY_PROJECT_ID" ] || [ -z "$RAILWAY_SERVICE_ID" ]; then
+            echo "Railway secrets are missing. Please set RAILWAY_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID."
+            exit 1
+          fi
+          railway login --token "$RAILWAY_TOKEN"
+          railway up --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --ci

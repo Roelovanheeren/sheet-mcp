@@ -1,0 +1,29 @@
+{
+  "name": "mcp-google-sheets",
+  "version": "1.0.0",
+  "description": "Node-based MCP server that proxies Google Sheets/Drive via Google APIs.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js",
+    "test": "echo \"No tests defined\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Roelovanheeren/sheet-mcp.git"
+  },
+  "keywords": [],
+  "author": "Roelof van Heeren",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Roelovanheeren/sheet-mcp/issues"
+  },
+  "homepage": "https://github.com/Roelovanheeren/sheet-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "express": "^5.1.0",
+    "googleapis": "^165.0.0",
+    "zod": "^3.25.76"
+  }
+}

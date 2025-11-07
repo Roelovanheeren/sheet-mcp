@@ -8,7 +8,10 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-RUN pip install --upgrade pip setuptools wheel && \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --upgrade pip setuptools wheel && \
     pip install .
 
 EXPOSE 8080
