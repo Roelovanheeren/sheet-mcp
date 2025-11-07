@@ -1,0 +1,53 @@
+name: Deploy Google Sheets MCP
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.CLOUD_RUN_REGION }}
+  SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE }}
+  SERVICE_ACCOUNT_EMAIL: ${{ vars.MCP_SERVICE_ACCOUNT }}
+  WORKLOAD_IDENTITY_PROVIDER: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+  DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Set up gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Build container image with Cloud Build
+        run: |
+          IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:${GITHUB_SHA::7}"
+          echo "IMAGE=${IMAGE}" >> $GITHUB_ENV
+          gcloud builds submit --tag "${IMAGE}"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${SERVICE_NAME}" \
+            --image "${IMAGE}" \
+            --region "${REGION}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account "${SERVICE_ACCOUNT_EMAIL}" \
+            --set-env-vars "DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}" \
+            --set-env-vars "PORT=8080"

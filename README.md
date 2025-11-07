@@ -295,6 +295,108 @@ If you want to modify the code:
 
 ---
 
+## 🚢 Deploying to Google Cloud Run (Keyless with Workload Identity Federation)
+
+Use this path when you want a hosted HTTPS/SSE endpoint (e.g., for AgentKit) without storing JSON keys. The repo now includes a `Dockerfile` plus `.github/workflows/deploy-cloud-run.yml` that automate the process once the Google Cloud + GitHub plumbing is in place.
+
+### 0. What You'll End Up With
+- A Cloud Run URL like `https://google-sheets-mcp-xxxxxx-uc.a.run.app/sse`.
+- The service runs entirely as a Google service account that has Drive/Sheets roles but **no** exported keys.
+- GitHub Actions deploys every push through Workload Identity Federation (OIDC), so your repo never stores long-lived secrets.
+
+### 1. One-Time Google Cloud Setup
+```bash
+PROJECT_ID=your-project-id
+SA_NAME=google-sheets-mcp
+SA_EMAIL="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+POOL_ID=gh-pool
+PROVIDER_ID=github
+
+gcloud services enable run.googleapis.com \
+  cloudbuild.googleapis.com \
+  iam.googleapis.com \
+  iamcredentials.googleapis.com \
+  drive.googleapis.com \
+  sheets.googleapis.com
+
+gcloud iam service-accounts create $SA_NAME \
+  --display-name="Google Sheets MCP"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/drive.file"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/sheets.editor"
+
+# Optional but handy for future tuning
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/run.admin"
+```
+1. Create/share a Drive folder (e.g., “AI Managed Sheets”), copy the folder ID from the URL, and share it with `google-sheets-mcp@${PROJECT_ID}.iam.gserviceaccount.com` as **Editor**. The server will only list/create spreadsheets inside this folder.
+2. Create a Workload Identity pool + GitHub provider (replace caps with your values):
+   ```bash
+   PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+
+   gcloud iam workload-identity-pools create $POOL_ID \
+     --location="global" \
+     --display-name="GitHub OIDC Pool"
+
+   gcloud iam workload-identity-pools providers create-oidc $PROVIDER_ID \
+     --location="global" \
+     --workload-identity-pool=$POOL_ID \
+     --display-name="GitHub Provider" \
+     --issuer-uri="https://token.actions.githubusercontent.com" \
+     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref"
+   ```
+3. Allow your GitHub repo to impersonate the service account (lock to `main` if desired):
+   ```bash
+   REPO="OWNER/REPO"
+
+   gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
+     --role="roles/iam.workloadIdentityUser" \
+     --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository/$REPO"
+   ```
+   To restrict to a branch, append `/attribute.ref/refs/heads/main` (or your branch) to the member path and keep the workflow trigger aligned.
+
+### 2. Configure GitHub Actions
+Set these **repository variables** (Settings → Secrets and variables → Actions → Variables) so the workflow has everything it needs:
+
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `GCP_PROJECT_ID` | `agent-lab-123456` | Cloud Build/Run project |
+| `CLOUD_RUN_REGION` | `us-central1` | Deployment region |
+| `CLOUD_RUN_SERVICE` | `google-sheets-mcp` | Cloud Run service name |
+| `MCP_SERVICE_ACCOUNT` | `google-sheets-mcp@agent-lab-123456.iam.gserviceaccount.com` | Runtime identity |
+| `WORKLOAD_IDENTITY_PROVIDER` | `projects/1234567890/locations/global/workloadIdentityPools/gh-pool/providers/github` | Full provider resource path |
+| `DRIVE_FOLDER_ID` | `1AbCdEf123...` | Folder shared with the service account |
+
+Every push to the configured branch will now:
+1. Build the container with `gcloud builds submit` using the provided `Dockerfile` (which runs `mcp-google-sheets --transport sse --host 0.0.0.0 --port 8080`).
+2. Deploy to Cloud Run via `.github/workflows/deploy-cloud-run.yml`, attaching your service account and injecting `DRIVE_FOLDER_ID`.
+3. Output the service URL in the workflow logs.
+
+### 3. Fetch the SSE URL and Add to AgentKit
+```bash
+gcloud run services describe $CLOUD_RUN_SERVICE \
+  --region $CLOUD_RUN_REGION \
+  --format="value(status.url)"
+```
+Append `/sse` for FastMCP SSE clients:
+```
+https://google-sheets-mcp-xxxxxx-uc.a.run.app/sse
+```
+Paste that URL into AgentKit (Tools → MCP Server → “Add server”) with Auth = None unless you add your own auth proxy.
+
+### 4. Hardening Ideas
+- Keep Drive/Sheets roles minimal (`roles/drive.file` + `roles/sheets.editor` limit access to the shared folder).
+- Remove `--allow-unauthenticated` and front Cloud Run with IAP or signed JWT checks if you need a private endpoint.
+- Use separate folders/service accounts per environment if you want stricter isolation.
+
+---
+
 ## 🔌 Usage with Claude Desktop
 
 Add the server config to `claude_desktop_config.json` under `mcpServers`. Choose the block matching your setup:

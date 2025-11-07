@@ -16,26 +16,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Auth to Google Cloud
+      - name: Auth to Google Cloud (OIDC)
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: google-sheets-mcp@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           create_credentials_file: true
-          export_default_credentials: true
-          scopes: |
-            https://www.googleapis.com/auth/spreadsheets
-            https://www.googleapis.com/auth/drive
+          export_environment_variables: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
-      - name: Install Google API client
-        run: pip install --quiet google-api-python-client google-auth google-auth-httplib2
-
-      - name: List a few Drive files
+      - name: List a few Drive files in the folder
         env:
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
         run: |
@@ -43,22 +37,18 @@ jobs:
           from googleapiclient.discovery import build
           from googleapiclient.errors import HttpError
 
-          folder_id = "${{ secrets.DRIVE_FOLDER_ID }}"
+          folder = "${{ secrets.DRIVE_FOLDER_ID }}"
           try:
-              service = build("drive", "v3")
-              query = f"'{folder_id}' in parents and trashed = false"
-              response = service.files().list(
-                  q=query,
-                  fields="files(id,name,mimeType)",
-                  pageSize=5
-              ).execute()
-              files = response.get("files", [])
-              print("Top 5 files in folder:")
-              for file in files:
-                  print(f"- {file['name']} ({file['id']}) [{file['mimeType']}]")
+              svc = build("drive", "v3")
+              q = f"'{folder}' in parents and trashed=false"
+              resp = svc.files().list(q=q, fields="files(id,name,mimeType)").execute()
+              files = resp.get("files", [])
               if not files:
-                  print("Folder is empty (auth still succeeded).")
-          except HttpError as exc:
-              print("Drive API error:", exc)
+                  print("Folder is accessible but empty.")
+              else:
+                  for f in files[:20]:
+                      print(f"{f['name']}  {f['id']}  {f['mimeType']}")
+          except HttpError as e:
+              print(e)
               raise
           PY
