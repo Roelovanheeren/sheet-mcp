@@ -323,16 +323,17 @@ Tools included:
 
 Use the provided Dockerfile + `.env.example` for a clean Railway deployment:
 
-1. **Share the Drive folder** with the service account that Railway will use (e.g., `google-sheets-mcp@savvy-depot-472312-k6.iam.gserviceaccount.com`). Give it Editor access so it can list/create files in that folder.
-2. **Create a service account JSON key** for the same identity and upload it in Railway → Variables → “Add File”. Mount it as `/opt/sa.json`.
-3. **Set Railway variables** (can also be stored in a `.env` when running locally):
+1. **Share the Drive folder** with `railway-sheets@savvy-depot-472312-k6.iam.gserviceaccount.com` (Editor access). That’s the service account whose key you load into Railway.
+2. **Create a service account JSON key** for that identity, Base64 encode it, and set `CREDENTIALS_CONFIG` to the single-line Base64 string in Railway → Variables.
+3. **Set Railway variables** (also reflected in `.env.example`):
    - `DRIVE_FOLDER_ID=1Wm3RE4MEWWL4kPFhljQgARPQdxT7l0xx`
    - `PORT=8080`
    - `LOG_LEVEL=info`
-   - `GOOGLE_APPLICATION_CREDENTIALS=/opt/sa.json`
-4. Deploy. Railway will build the Dockerfile, respect the platform `PORT`, and start the SSE endpoint at `https://<service>.up.railway.app/sse`.
+   - `CREDENTIALS_CONFIG=<base64 service-account json>`
+   - `GCP_PROJECT_ID=savvy-depot-472312-k6`
+4. Redeploy. Railway builds the Dockerfile (now based on `ghcr.io/modelcontextprotocol/python-mcp`) and starts the SSE endpoint at `https://<service>.up.railway.app/sse`. Logs should show “Auth method: service account (decoded from CREDENTIALS_CONFIG)”.
 
-> Tip: the `.env.example` in this repo lists the required variables. Copy it to `.env` if you want to run the container outside Railway.
+> Tip: if you prefer not to expose the Base64 string, upload the JSON as a Railway file at `/opt/sa.json` and set `GOOGLE_APPLICATION_CREDENTIALS=/opt/sa.json` instead; the code honors both.
 
 ---
 
